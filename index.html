@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body onkeydown="OnKeyDown(event)" onkeyup="OnKeyUp(event)">
+    <img id="Sprite" width="0" height="0" src="Sources/download.png">
+    <!--Sprite nada regular:
+        - dino 1  = (1680, 0), 84px X 90 px
+            (x_dino(n) = x_dino 1 + 86(n-1)) 
+
+        - numero 0 = (1293, 1), 20px X 21 px
+            (x_numero(n) = x_numero 1 + 20(n))  
+    
+        - cacto 0 = ()
+    -->
+    <canvas id="myCanvas" width="1360" height="330"></canvas>
+
+    <script>
+        //variáveis essenciais
+        var xo = 75; //coordenada inicial do dino
+        var x = xo
+        var y = 0
+        var teclar = "";
+        var c = document.getElementById("myCanvas");
+        var ctx = c.getContext("2d");
+        var Pontos = 0
+
+        //variáveis física do pulo
+        var Pulando = 0
+        var G = 1   //gravidade
+        var F = 0   //força do pulo
+
+        //variáveis do desenho
+        var sprite = document.getElementById("Sprite")
+        var h_dino = 95 //altura do dino
+        var w_dino = 84 //largura do dino
+        var n_dino = 1  //numero do sprite do dino atual (1 a 6)
+        var x_back1 = 0 //coordenada inicial do background 1
+        var x_back2 = 1360  //coordenada inicial do background 2
+
+        //obstáculos: descobri essa classificação tarde demais para usar em mais objetos
+        var y_cacto = c.height - 100
+        class GameObject
+        {
+            constructor (context, x, y, width, height){
+                this.context = context;
+                this.x = x;
+                this.y = y;
+                this.width = width;
+                this.height = height;
+
+                this.moving = false;
+            }
+        }
+        gameObjects = [
+        new GameObject(ctx, c.width, y_cacto, 49, 100),
+        new GameObject(ctx, c.width, y_cacto, 49, 100),
+        new GameObject(ctx, c.width, y_cacto, 49, 100),
+        new GameObject(ctx, c.width, y_cacto, 49, 100)
+        ];
+        var first = 0 // cacto mais proximo do dino
+        var moving_objects = 0
+
+        //Controla parada e reinício
+        var Col = true
+        var Replay = true
+
+        function OnKeyDown(event) {
+            teclar = event.key;
+        }
+
+        function OnKeyUp(event) {
+            teclar = "";
+        }
+
+        function x_dino(n) {    // encontra o x de um dos sprites do dino (a tabela de sprites nao está bem configurada)
+            let k = 1680 + 88 * (n - 1)
+            return (k)
+        }
+
+        function Pulo() {       /*se não estiver pulando, verifica o input.
+                                  se estiver pulando, controla a posição do dino durante o pulo*/
+            if (Pulando == 1) {
+                y = y - F;
+                F = F - G;
+                if (y - F > c.height - (h_dino + 10)) //voltou para o chão
+                    Pulando = 0;
+            } else {
+                if (teclar == ' ') {
+                    F = 20;
+                    Pulando = 1
+                }
+            }
+        }
+
+        function Fundo() {      /*Movimenta o backgound para a esquerda*/
+            x_back1 -= 10
+            x_back2 -= 10
+            if (x_back1 == -1360)
+                x_back1 = 1360
+            if (x_back2 == -1360)
+                x_back2 = 1360
+        }
+
+        function Obstacles(){   //cria os obstáculos periódicamente
+            if(gameObjects[first].x < (w_dino - gameObjects[first].width)){ //define qual é o próximo obj à colidir com o dino
+                first ++
+                if(first > 3)
+                    first = 0
+            }
+            for(i = 0; i < 4; i++){ // controla o movimento de cada obstáculo
+                obj = gameObjects[i]
+                let j = (i-1<0 ? 3:i-1) //numero do cacto anterior
+
+                if(obj.moving == true){ // se o cacto está se movendo, ele continua ou para e volta para o início
+                    obj.x -= 10 //movimento
+                    if(obj.x < 0-obj.width){    //se o cacto sair da tela, para de mover e volta para o início
+                        obj.x = c.width + 8
+                        obj.moving = false
+                        moving_objects --
+                    }       
+                }
+                else{   //se o cacto estiver parado, ele pode ser liberado após certa distância do anterior
+                    if(gameObjects[j].moving == true && gameObjects[j].x < c.width - 285){
+                        let freq = Pontos /1000
+                        if(Math.random()*100 < freq){// solta aleatoriamente
+                            obj.moving = true
+                            moving_objects++
+                        }
+                    }
+                    if(moving_objects == 0){
+                        obj.moving = true
+                        moving_objects++
+                    }
+                }
+            }
+        }
+
+        function Draw_Obstacles(){
+            for(i = 0; i < 4; i++){
+                obj = gameObjects[i]
+                ctx.drawImage(sprite, 651, 0, obj.width, obj.height, obj.x, obj.y, obj.width, obj.height)
+            }
+        }
+
+        function Animaçao(){    // alterna entre os sprites do dino para criar a animação do dino
+            if(!Col){   // se não estiver colidindo
+                if(Pulando == 1){
+                    n_dino = 1    //se estiver pulando, manter sprite 1
+                }
+                else {   // se nao estiver pulando, alterna entre sprite 3 e 4
+                    if(n_dino == 4)
+                        n_dino = 3 
+                    else
+                        n_dino = 4
+                }
+            }
+            else{   // se estiver colidindo
+                n_dino = 5
+            }
+        }
+
+        function rectIntersect(x1, y1, w1, h1, x2, y2, w2, h2)
+        {
+            // Checa se 2 objetos se intersectam
+            if (x2 > w1 + x1 || x1 > w2 + x2 || y2 > h1 + y1 || y1 > h2 + y2){
+                return false;
+            }
+                return true;
+        }
+        function Colisao(){     //detecta a colisao do dino com o primeiro obstáculo
+                obj2 = gameObjects[first];
+                // Compara dino com obj2
+                Col = false
+                if (rectIntersect(x, y, w_dino, h_dino, obj2.x, obj2.y, obj2.width, obj2.height)){
+                    Col = true;
+                }
+        }
+
+        function x_numero(n) {    //determina o x de um dos sprites dos números
+            let k = 1293 + 20 * (n)
+            return(k)
+        }
+        function Imprime_Pontos(){ // imprime a pontuação na tela
+            var vetor_pontos = [0, 0, 0, 0, 0] // vetor que vai guardar cada algarismo
+            //transforma pontuação em vetor
+            let pts = Pontos
+            let i = 0
+            do{
+                vetor_pontos[i] = (pts % 10) 
+                pts = Math.floor(pts / 10) 
+                i++ 
+            }while(pts >= 10)
+                vetor_pontos[i] = pts
+            //imprime o vetor ao contrario
+            i = vetor_pontos.length
+            for(j = 0; j < i; j++){
+                ctx.drawImage(sprite, x_numero(vetor_pontos[j]), 1, 20, 21, (c.width - ((j+1)*31)-5), 0, 30, 32)
+            }
+
+        }
+
+        function Reinicio(){
+            if(Replay){
+                //Reiniciar Variáveis:
+                x = xo
+                y = c.height - (h_dino + 10)
+                Pulando = 0
+                G = 1   
+                F = 0   
+                n_dino = 1
+                Replay = false
+                Pontos = 0
+                gameObjects[0].moving = true
+                gameObjects[0].x = c.width
+                Col = false
+                for(i=1; i<3; i++){
+                    gameObjects[i].moving = false
+                    gameObjects[i].x = c.width
+                }
+                moving_objects = 1
+            }
+            else{
+                //mostrar botão de reinício e o escrito Game Over
+                ctx.drawImage(sprite, 1293, 28, 382, 22, ((c.width - 382)/2), ((c.height - 22)/2), 382, 22)
+                if(teclar == "r")
+                    Replay = true
+                /*não consegui fazer o botão da forma como eu queria (aparecendo no meio da tela como no jogo original). 
+                Para reiniciar precisa apertar a tecla r*/
+            }
+        }
+
+        function Update() {
+            ctx.clearRect(0, 0, c.width, c.height); //limpa canvas
+            //Funcionamento do jogo:
+            if(!Col){   //se nao houver colisão
+                Pulo();
+                Obstacles();
+                Colisao();
+                Fundo();
+                Pontos += 1
+            }
+            else{       //se houver colisão
+                Reinicio()                
+            }
+
+            //Display:
+            Draw_Obstacles();
+            ctx.drawImage(sprite, 2, 111, c.width, 18, x_back1, c.height - 18, c.width, 18) // desenha o fundo 1
+            ctx.drawImage(sprite, 2, 111, c.width, 18, x_back2, c.height - 18, c.width, 18) // desenha o fundo 2
+            ctx.drawImage(sprite, x_dino(n_dino), 0, w_dino, h_dino, x, y, w_dino, h_dino); // desenha a nova posição do dino
+            Imprime_Pontos();
+        }
+
+        setInterval(Update, 1);
+        setInterval(Animaçao, 100);
+    </script>
+</body>
+
+</html>
